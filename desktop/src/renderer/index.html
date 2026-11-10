@@ -169,6 +169,7 @@
             Output the phone camera feed to OBS Virtual Camera for use in
             Zoom, Teams, Meet, etc.
           </p>
+          <span id="vc-status" class="vc-status inactive">Inactive</span>
         </div>
       </div>
 
@@ -178,8 +179,26 @@
     </div>
   </div>
 
+  <!-- ═════════════════════════════════════════════════════════════════════
+       STATUS BAR (bottom)
+       Connection status, streaming stats (FPS, frames, bytes)
+  ═════════════════════════════════════════════════════════════════════ -->
+  <footer id="status-bar">
+    <div class="status-bar-left">
+      <span class="status-bar-item">Status: <strong id="stat-connection">Disconnected</strong></span>
+    </div>
+    <div class="status-bar-right">
+      <span class="status-bar-item">Video: <strong id="stat-frames">0</strong> frames</span>
+      <span class="status-bar-item">Audio: <strong id="stat-audio">0</strong> frames</span>
+      <span class="status-bar-item">Rate: <strong id="stat-fps">0 fps</strong></span>
+      <span class="status-bar-item">Data: <strong id="stat-bytes">0 B</strong></span>
+    </div>
+  </footer>
+
+  <!-- Toast notification container -->
+  <div id="toast-container"></div>
+
   <!-- Scripts -->
-  <script src="script-editor.js"></script>
-  <script src="voice-sync.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

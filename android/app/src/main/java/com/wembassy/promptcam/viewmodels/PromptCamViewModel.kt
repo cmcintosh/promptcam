@@ -7,10 +7,10 @@ import android.util.Log
 import android.view.Surface
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.wembassy.promptcam.Settings.AppSettings
-import com.wembassy.promptcam.Settings.CameraLens
-import com.wembassy.promptcam.Settings.SettingsManager
-import com.wembassy.promptcam.Settings.VideoResolution
+import com.wembassy.promptcam.AppSettings
+import com.wembassy.promptcam.CameraLens
+import com.wembassy.promptcam.SettingsManager
+import com.wembassy.promptcam.VideoResolution
 import com.wembassy.promptcam.audio.AudioEncoder
 import com.wembassy.promptcam.camera.CameraManager
 import com.wembassy.promptcam.camera.VideoEncoder

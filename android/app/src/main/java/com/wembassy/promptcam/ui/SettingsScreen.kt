@@ -29,9 +29,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.wembassy.promptcam.Settings.CameraLens
-import com.wembassy.promptcam.Settings.VideoResolution
-import com.wembassy.promptcam.Settings.AppSettings
+import com.wembassy.promptcam.AppSettings
+import com.wembassy.promptcam.CameraLens
+import com.wembassy.promptcam.VideoResolution
 
 /**
  * Settings dialog for PromptCam configuration.
