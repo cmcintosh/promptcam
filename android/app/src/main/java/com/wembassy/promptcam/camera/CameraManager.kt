@@ -261,9 +261,15 @@ class CameraManager(
         val surface = previewSurface ?: return
 
         try {
-            val requestBuilder = camera.createCaptureRequest(
+            // Use TEMPLATE_PREVIEW when no encoder surface (just preview),
+            // TEMPLATE_RECORD when encoding (streaming)
+            val template = if (encoderSurface != null) {
                 CameraDevice.TEMPLATE_RECORD
-            )
+            } else {
+                CameraDevice.TEMPLATE_PREVIEW
+            }
+
+            val requestBuilder = camera.createCaptureRequest(template)
             requestBuilder.addTarget(surface)
 
             if (encoderSurface != null) {
@@ -287,7 +293,7 @@ class CameraManager(
                 null,
                 backgroundHandler
             )
-            Log.i(TAG, "Repeating capture request started")
+            Log.i(TAG, "Repeating capture request started (template=$template)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start repeating request", e)
         }

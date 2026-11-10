@@ -3,19 +3,20 @@ package com.wembassy.promptcam.ui
 import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.view.TextureView
+import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.PlayArrow
@@ -41,7 +42,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.wembassy.promptcam.viewmodels.PromptCamViewModel
 
@@ -49,16 +52,11 @@ import com.wembassy.promptcam.viewmodels.PromptCamViewModel
  * Main camera screen composable.
  *
  * Shows:
- * - Camera preview using a TextureView (via SurfaceTexture)
- * - Teleprompter overlay on top of the camera preview
+ * - Camera preview using a TextureView (full screen)
+ * - Teleprompter overlay on top of the camera preview (with drop shadow)
+ * - IP address of the phone (so desktop can connect)
  * - Control buttons: camera switch, start/stop streaming, settings
  * - Connection status (number of clients connected)
- *
- * The layout is landscape-optimized with the camera preview filling the screen
- * and controls overlaid on top.
- *
- * @param viewModel The ViewModel that coordinates camera, encoders, and servers
- * @param modifier Compose modifier for layout customization
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,43 +70,29 @@ fun CameraScreen(
     val fontSize by viewModel.fontSize.collectAsState()
     val clientCount by viewModel.clientCount.collectAsState()
     val settings by viewModel.settings.collectAsState()
+    val deviceIp by viewModel.deviceIp.collectAsState()
 
     var showSettings by remember { mutableStateOf(false) }
-    var textureView by remember { mutableStateOf<TextureView?>(null) }
-
-    val context = LocalContext.current
-
-    // Observe streaming state to manage camera and servers
-    LaunchedEffect(streamingState) {
-        when (streamingState) {
-            com.wembassy.promptcam.viewmodels.PromptCamViewModel.StreamingState.STREAMING -> {
-                // Streaming is managed by the ViewModel
-            }
-            com.wembassy.promptcam.viewmodels.PromptCamViewModel.StreamingState.IDLE -> {
-                // Idle state
-            }
-            com.wembassy.promptcam.viewmodels.PromptCamViewModel.StreamingState.ERROR -> {
-                // Error state - could show a message
-            }
-        }
-    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // Camera preview using TextureView
+        // Camera preview using TextureView — fills the entire screen
         AndroidView(
             factory = { ctx ->
                 TextureView(ctx).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
                     surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                         override fun onSurfaceTextureAvailable(
                             surface: SurfaceTexture,
                             width: Int,
                             height: Int
                         ) {
-                            // Notify ViewModel that the preview surface is ready
                             viewModel.onPreviewSurfaceAvailable(Surface(surface))
                         }
 
@@ -117,7 +101,7 @@ fun CameraScreen(
                             width: Int,
                             height: Int
                         ) {
-                            // Handle size changes if needed
+                            // Handle size changes
                         }
 
                         override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
@@ -126,18 +110,24 @@ fun CameraScreen(
                         }
 
                         override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
-                            // Called on every frame update - no action needed
+                            // Called on every frame
                         }
                     }
                 }
             },
             modifier = Modifier.fillMaxSize(),
             update = { tv ->
-                textureView = tv
+                // Ensure layout params are correct on recomposition
+                if (tv.layoutParams.width != ViewGroup.LayoutParams.MATCH_PARENT) {
+                    tv.layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                }
             }
         )
 
-        // Teleprompter overlay
+        // Teleprompter overlay — on top of camera, with drop shadow
         if (teleprompterText.isNotEmpty()) {
             TeleprompterOverlay(
                 text = teleprompterText,
@@ -147,18 +137,21 @@ fun CameraScreen(
             )
         }
 
-        // Top status bar — connection count and streaming status
+        // Top status bar — IP address, streaming status, client count
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Top
         ) {
-            // Streaming status indicator
+            // Left: Streaming status indicator
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
                 val statusColor = when (streamingState) {
                     com.wembassy.promptcam.viewmodels.PromptCamViewModel.StreamingState.STREAMING -> Color(0xFF4CAF50)
@@ -168,7 +161,7 @@ fun CameraScreen(
 
                 Box(
                     modifier = Modifier
-                        .size(12.dp)
+                        .size(10.dp)
                         .background(statusColor, CircleShape)
                 )
 
@@ -179,25 +172,57 @@ fun CameraScreen(
                         com.wembassy.promptcam.viewmodels.PromptCamViewModel.StreamingState.IDLE -> "Idle"
                     },
                     color = Color.White,
-                    style = MaterialTheme.typography.labelMedium
+                    style = MaterialTheme.typography.labelMedium,
+                    fontSize = 13.sp
                 )
             }
 
-            // Connection count
-            BadgedBox(
-                badge = {
-                    if (clientCount > 0) {
-                        Badge {
-                            Text(text = clientCount.toString())
-                        }
-                    }
-                }
+            // Center: IP address display (the main thing users need to see)
+            Box(
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                Text(
-                    text = "Clients",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Phone IP",
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                    Text(
+                        text = deviceIp,
+                        color = Color(0xFFe94560),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Right: Client count
+            Box(
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Clients: ",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = clientCount.toString(),
+                        color = if (clientCount > 0) Color(0xFF4CAF50) else Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 
@@ -215,7 +240,7 @@ fun CameraScreen(
                 onClick = { viewModel.switchCamera() },
                 modifier = Modifier
                     .size(56.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Cameraswitch,
@@ -261,7 +286,7 @@ fun CameraScreen(
                 onClick = { showSettings = true },
                 modifier = Modifier
                     .size(56.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Settings,

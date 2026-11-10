@@ -3,6 +3,8 @@ package com.wembassy.promptcam.viewmodels
 import android.app.Application
 import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
+import android.net.wifi.WifiManager
+import android.text.format.Formatter
 import android.util.Log
 import android.view.Surface
 import androidx.lifecycle.AndroidViewModel
@@ -93,6 +95,10 @@ class PromptCamViewModel(
     private val _clientCount = MutableStateFlow(0)
     val clientCount: StateFlow<Int> = _clientCount.asStateFlow()
 
+    // Device IP address (for display so user knows what to connect to)
+    private val _deviceIp = MutableStateFlow("")
+    val deviceIp: StateFlow<String> = _deviceIp.asStateFlow()
+
     // Component references
     private var cameraManager: CameraManager? = null
     private var videoEncoder: VideoEncoder? = null
@@ -111,8 +117,26 @@ class PromptCamViewModel(
             }
         }
 
+        // Get device IP address for display
+        _deviceIp.value = getDeviceIpAddress()
+
         // Start control server immediately (always listening for teleprompter commands)
         startControlServer()
+    }
+
+    /**
+     * Get the device's Wi-Fi IP address for display.
+     */
+    private fun getDeviceIpAddress(): String {
+        return try {
+            val wifiManager = getApplication<Application>().getSystemService(Context.WIFI_SERVICE) as WifiManager
+            @Suppress("DEPRECATION")
+            val ip = Formatter.formatIpAddress(wifiManager.connectionInfo.ipAddress)
+            if (ip == "0.0.0.0") "— Check Wi-Fi —" else ip
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not get Wi-Fi IP", e)
+            "— Check Wi-Fi —"
+        }
     }
 
     /**
