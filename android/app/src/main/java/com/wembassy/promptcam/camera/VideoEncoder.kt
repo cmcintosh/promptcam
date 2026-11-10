@@ -8,26 +8,26 @@ import android.util.Log
 import android.view.Surface
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
-import java.nio.ByteBuffer
+import kotlinx.coroutines.flow.asSharedFlow
 
 /**
  * H.264 video encoder using Android's MediaCodec API.
- * 
+ *
  * This encoder:
  * - Creates an H.264/AVC encoder with the specified resolution and bitrate
- * - Accepts input via a Surface (from Camera2 preview output)
- * - Produces H.264 NAL units as output
- * - Emits encoded NAL units via a SharedFlow for network transmission
- * 
- * The encoder runs asynchronously using MediaCodec callbacks, so no
- * manual polling is needed. NAL units are emitted as ByteArray payloads
- * (without the framing header — framing is added by the TCP server).
- * 
- * @param width Video width in pixels
- * @param height Video height in pixels  
- * @param bitrate Target bitrate in bits per second
- * @param frameRate Target frame rate in FPS
- * @param iFrameInterval Key frame interval in seconds
+ * - Accepts input via a Surface (from Camera2 preview/record output)
+ * - Produces H.264 NAL units as output, including SPS/PPS config frames
+ * - Emits encoded NAL units via a callback interface and SharedFlow
+ *
+ * The encoder runs asynchronously using MediaCodec callbacks.
+ * NAL units are emitted as ByteArray payloads (raw H.264 data, no framing header).
+ * The TCP server adds the binary protocol framing.
+ *
+ * @param width Video width in pixels (e.g. 1280)
+ * @param height Video height in pixels (e.g. 720)
+ * @param bitrate Target bitrate in bits per second (e.g. 4_000_000)
+ * @param frameRate Target frame rate in FPS (e.g. 30)
+ * @param iFrameInterval Key frame interval in seconds (e.g. 2)
  */
 class VideoEncoder(
     private val width: Int,
@@ -39,23 +39,39 @@ class VideoEncoder(
     companion object {
         private const val TAG = "VideoEncoder"
         private const val MIME_TYPE = "video/avc"
-        private const val TIMEOUT_US = 10_000L
     }
 
     private var codec: MediaCodec? = null
     private var inputSurface: Surface? = null
     private var isRunning = false
 
-    // Flow of encoded NAL units (raw H.264 data, no framing header)
-    private val _encodedFrames = MutableSharedFlow<ByteArray>(
+    // Callback interface for encoded frames
+    interface EncoderCallback {
+        fun onEncodedFrame(data: ByteArray, isKeyFrame: Boolean, isConfigFrame: Boolean)
+    }
+
+    var callback: EncoderCallback? = null
+
+    // Flow of encoded NAL units for coroutine-based consumption
+    private val _encodedFrames = MutableSharedFlow<EncodedFrame>(
         replay = 0,
-        extraBufferCapacity = 64
+        extraBufferCapacity = 128
     )
-    val encodedFrames: SharedFlow<ByteArray> = _encodedFrames
+    val encodedFrames: SharedFlow<EncodedFrame> = _encodedFrames.asSharedFlow()
+
+    /**
+     * Encoded frame data with metadata.
+     */
+    data class EncodedFrame(
+        val data: ByteArray,
+        val isKeyFrame: Boolean,
+        val isConfigFrame: Boolean,
+        val timestamp: Long
+    )
 
     /**
      * The input surface for this encoder.
-     * Camera2 preview output should be directed to this surface.
+     * Camera2 output should be directed to this surface.
      * Available after prepare() is called.
      */
     fun getInputSurface(): Surface {
@@ -76,6 +92,7 @@ class VideoEncoder(
         }
 
         val format = MediaFormat().apply {
+            setString(MediaFormat.KEY_MIME, MIME_TYPE)
             setInteger(MediaFormat.KEY_WIDTH, width)
             setInteger(MediaFormat.KEY_HEIGHT, height)
             setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
@@ -83,13 +100,21 @@ class VideoEncoder(
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, iFrameInterval)
             setInteger(MediaFormat.KEY_COLOR_FORMAT,
                 MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+
+            // Set AVC profile for compatibility
+            setInteger(MediaFormat.KEY_PROFILE,
+                MediaCodecInfo.CodecProfileLevel.AVCProfileMain)
+            val profileLevel = MediaCodecInfo.CodecProfileLevel()
+            profileLevel.profile = MediaCodecInfo.CodecProfileLevel.AVCProfileMain
+            profileLevel.level = MediaCodecInfo.CodecProfileLevel.AVCLevel31
+            setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel31)
         }
 
         try {
             codec = MediaCodec.createEncoderByType(MIME_TYPE)
             codec!!.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             inputSurface = codec!!.createInputSurface()
-            Log.i(TAG, "Encoder prepared: ${width}x${height} @ ${bitrate}bps")
+            Log.i(TAG, "Encoder prepared: ${width}x${height} @ ${frameRate}fps, ${bitrate}bps")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to prepare encoder", e)
             codec?.release()
@@ -100,8 +125,8 @@ class VideoEncoder(
 
     /**
      * Start the encoder with asynchronous callback mode.
-     * NAL units will be emitted via encodedFrames flow.
-     * 
+     * NAL units will be emitted via encodedFrames flow and callback interface.
+     *
      * @param handler Handler for encoder callbacks (use camera background handler)
      */
     fun start(handler: Handler) {
@@ -115,7 +140,7 @@ class VideoEncoder(
 
         codec!!.setCallback(object : MediaCodec.Callback() {
             override fun onInputBufferAvailable(c: MediaCodec, index: Int) {
-                // Not used for Surface input — the codec feeds from the Surface
+                // Not used for Surface input — the codec feeds from the Surface automatically
             }
 
             override fun onOutputBufferAvailable(
@@ -130,20 +155,34 @@ class VideoEncoder(
                     return
                 }
 
-                // Extract NAL units from the output buffer
-                val data = ByteArray(info.size)
-                outputBuffer.position(info.offset)
-                outputBuffer.limit(info.offset + info.size)
-                outputBuffer.get(data)
-
-                // Check for config buffer (SPS/PPS) or encoded frame
                 if (info.size > 0) {
-                    // Emit the encoded NAL data. The TCP server will add framing.
-                    // We emit both config (SPS/PPS) and regular frames.
-                    val nalData = data.copyOf()
-                    
-                    // Use tryEmit to avoid blocking the codec callback
-                    _encodedFrames.tryEmit(nalData)
+                    // Extract NAL data from the output buffer
+                    val data = ByteArray(info.size)
+                    outputBuffer.position(info.offset)
+                    outputBuffer.limit(info.offset + info.size)
+                    outputBuffer.get(data)
+
+                    // Determine frame type from NAL header
+                    val isConfigFrame = (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
+                    val isKeyFrame = (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
+
+                    // Emit via callback interface
+                    callback?.onEncodedFrame(data.copyOf(), isKeyFrame, isConfigFrame)
+
+                    // Emit via SharedFlow
+                    val frame = EncodedFrame(
+                        data = data.copyOf(),
+                        isKeyFrame = isKeyFrame,
+                        isConfigFrame = isConfigFrame,
+                        timestamp = info.presentationTimeUs
+                    )
+                    _encodedFrames.tryEmit(frame)
+
+                    if (isConfigFrame) {
+                        Log.d(TAG, "Config frame (SPS/PPS): ${data.size} bytes")
+                    } else if (isKeyFrame) {
+                        Log.d(TAG, "Key frame: ${data.size} bytes")
+                    }
                 }
 
                 c.releaseOutputBuffer(index, false)
@@ -151,8 +190,8 @@ class VideoEncoder(
 
             override fun onOutputFormatChanged(c: MediaCodec, format: MediaFormat) {
                 Log.i(TAG, "Output format changed: $format")
-                // The format change indicates SPS/PPS are available.
-                // The config data will come through onOutputBufferAvailable as well.
+                // SPS/PPS are available in the format's "csd-0" and "csd-1" buffers
+                // These will also be delivered via onOutputBufferAvailable with BUFFER_FLAG_CODEC_CONFIG
             }
 
             override fun onError(c: MediaCodec, e: MediaCodec.CodecException) {
@@ -168,7 +207,7 @@ class VideoEncoder(
 
     /**
      * Request a key frame (I-frame) from the encoder.
-     * Useful when a new client connects mid-stream.
+     * Useful when a new client connects mid-stream so they can decode immediately.
      */
     fun requestKeyFrame() {
         if (!isRunning || codec == null) return
@@ -185,7 +224,7 @@ class VideoEncoder(
     }
 
     /**
-     * Stop the encoder and release resources.
+     * Stop the encoder and release all resources.
      */
     fun stop() {
         if (!isRunning) return
@@ -210,7 +249,7 @@ class VideoEncoder(
 
     /**
      * Signal end of stream to the encoder.
-     * Use this before stopping for clean shutdown.
+     * Use this before stopping for a clean shutdown.
      */
     fun signalEndOfStream() {
         if (!isRunning || codec == null) return
@@ -221,4 +260,9 @@ class VideoEncoder(
             Log.w(TAG, "Failed to signal end of stream", e)
         }
     }
+
+    /**
+     * Check if the encoder is currently running.
+     */
+    fun isRunning(): Boolean = isRunning
 }
