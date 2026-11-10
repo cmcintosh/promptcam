@@ -38,6 +38,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- mDNS/NSD discovery service -->
+        <service
+            android:name=".network.DiscoveryService"
+            android:exported="false" />
     </application>
 
 </manifest>

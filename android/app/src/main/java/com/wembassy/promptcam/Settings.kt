@@ -7,12 +7,13 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.wembassy.promptcam.protocol.Protocol
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /**
  * Settings data model and persistence layer for PromptCam.
- * 
+ *
  * Uses Jetpack DataStore for async, type-safe preference storage.
  * All settings are exposed as reactive Flows for Compose observation.
  */
@@ -29,7 +30,7 @@ enum class CameraLens(val displayName: String, val facing: Int) {
     BACK("Back Camera", android.hardware.camera2.CameraCharacteristics.LENS_FACING_BACK);
 
     companion object {
-        fun fromName(name: String): CameraLens = 
+        fun fromName(name: String): CameraLens =
             entries.find { it.name == name } ?: BACK
     }
 }
@@ -42,7 +43,7 @@ enum class VideoResolution(val displayName: String, val width: Int, val height: 
     P1080("1080p (1920×1080)", 1920, 1080);
 
     companion object {
-        fun fromName(name: String): VideoResolution = 
+        fun fromName(name: String): VideoResolution =
             entries.find { it.name == name } ?: P720
     }
 }
@@ -61,7 +62,7 @@ data class AppSettings(
 
 /**
  * Settings manager — reads and writes settings via DataStore.
- * 
+ *
  * Usage:
  *   val settingsManager = SettingsManager(context)
  *   settingsManager.settingsFlow.collect { settings -> ... }
