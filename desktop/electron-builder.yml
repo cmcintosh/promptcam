@@ -1,0 +1,53 @@
+# electron-builder configuration for PromptCam Desktop
+# Windows NSIS installer, macOS DMG, Linux AppImage
+
+appId: com.promptcam.desktop
+productName: PromptCam
+copyright: Copyright © 2026 PromptCam
+
+directories:
+  output: dist
+  buildResources: build
+
+# Windows — NSIS installer
+win:
+  target:
+    - nsis
+  artifactName: PromptCam-Setup-${version}.${ext}
+  # Sign the installer if code-signing cert is available
+  # certificateFile: ''
+  # certificatePassword: ''
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: PromptCam
+
+# macOS — DMG
+mac:
+  target:
+    - dmg
+  category: public.app-category.video
+  hardenedRuntime: true
+
+# Linux — AppImage
+linux:
+  target:
+    - AppImage
+  category: AudioVideo
+
+# Include Vosk model in the build if present.
+# Download the model separately and place at ./models/vosk-model-small-en-us-0.15
+# before building for distribution.
+extraResources:
+  - from: models/
+    to: models/
+    filter:
+      - "**/*"
+  - from: build/icons/
+    to: icons/
+    filter:
+      - "**/*"

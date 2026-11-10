@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+  <title>PromptCam Desktop</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ═════════════════════════════════════════════════════════════════════
+       CONNECTION PANEL (top bar)
+       Device dropdown (auto-discovered), manual IP input,
+       Connect / Disconnect button, status indicator
+  ═════════════════════════════════════════════════════════════════════ -->
+  <header id="connection-panel">
+    <div class="brand">
+      <span class="logo">📷</span>
+      <span class="title">PromptCam</span>
+    </div>
+
+    <div class="connection-controls">
+      <select id="device-select" title="Discovered devices">
+        <option value="">— Select Device —</option>
+      </select>
+
+      <input type="text" id="manual-ip" placeholder="or enter IP manually"
+             title="Manual IP address (e.g. 192.168.1.50)" />
+
+      <button id="connect-btn" class="btn btn-primary">Connect</button>
+      <button id="disconnect-btn" class="btn btn-danger" disabled>Disconnect</button>
+
+      <div id="status-indicator" class="status disconnected">
+        <span class="status-dot"></span>
+        <span class="status-text">Disconnected</span>
+      </div>
+    </div>
+
+    <button id="settings-btn" class="btn btn-icon" title="Settings">⚙</button>
+  </header>
+
+  <!-- ═════════════════════════════════════════════════════════════════════
+       PREVIEW PANEL (center)
+       Video preview canvas showing camera feed from phone
+  ═════════════════════════════════════════════════════════════════════ -->
+  <main id="preview-panel">
+    <div class="preview-container">
+      <canvas id="video-canvas" width="1280" height="720"></canvas>
+      <div id="preview-placeholder" class="preview-placeholder">
+        <p>📷 No camera connected</p>
+        <p class="hint">Connect to a PromptCam device to see the live preview</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═════════════════════════════════════════════════════════════════════
+       BOTTOM PANEL: Script Editor (left) + Voice Sync (right)
+  ═════════════════════════════════════════════════════════════════════ -->
+  <section id="bottom-panel">
+    <!-- ── Script Editor ────────────────────────────────────────────── -->
+    <div id="script-editor-panel" class="panel">
+      <h2>📝 Script Editor</h2>
+
+      <textarea id="script-textarea"
+                placeholder="Type or paste your script here…"
+                spellcheck="true"></textarea>
+
+      <div class="script-stats">
+        <span id="word-count">0 words</span>
+        <span id="read-time">~0 min read</span>
+      </div>
+
+      <div class="script-controls">
+        <label>
+          Font Size
+          <input type="range" id="font-size-slider" min="12" max="48" value="24" />
+          <span id="font-size-value">24pt</span>
+        </label>
+
+        <label>
+          Scroll Speed
+          <input type="range" id="speed-slider" min="0.5" max="3.0" step="0.1" value="1.0" />
+          <span id="speed-value">1.0×</span>
+        </label>
+
+        <button id="send-script-btn" class="btn btn-primary" disabled>Send to Phone</button>
+      </div>
+
+      <div class="manual-scroll">
+        <label>
+          Manual Scroll
+          <input type="range" id="manual-scroll-slider" min="0" max="1000" value="0" />
+          <span id="manual-scroll-value">0%</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- ── Voice Sync ──────────────────────────────────────────────── -->
+    <div id="voice-sync-panel" class="panel">
+      <h2>🎙 Voice Sync</h2>
+
+      <div class="voice-controls">
+        <button id="voice-start-btn" class="btn btn-success" disabled>Start Voice Sync</button>
+        <button id="voice-stop-btn" class="btn btn-danger" disabled>Stop Voice Sync</button>
+      </div>
+
+      <div class="voice-status">
+        <span id="voice-status-text">Idle</span>
+      </div>
+
+      <div class="voice-partial">
+        <label>Recognized:</label>
+        <div id="partial-text" class="partial-text">—</div>
+      </div>
+
+      <div class="voice-scroll">
+        <label>Scroll Position:</label>
+        <div class="scroll-bar-container">
+          <div id="scroll-bar" class="scroll-bar"></div>
+          <span id="scroll-percent">0%</span>
+        </div>
+      </div>
+
+      <div class="voice-confidence">
+        <label>Match Confidence:</label>
+        <div class="confidence-bar-container">
+          <div id="confidence-bar" class="confidence-bar"></div>
+          <span id="confidence-percent">0%</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════════════════════════════════════════
+       SETTINGS MODAL
+       Vosk model path, scroll speed multiplier, virtual camera toggle
+  ═════════════════════════════════════════════════════════════════════ -->
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Settings</h2>
+        <button id="settings-close" class="btn btn-icon">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="setting-row">
+          <label for="vosk-model-path">Vosk Model Path</label>
+          <input type="text" id="vosk-model-path"
+                 value="./models/vosk-model-small-en-us-0.15"
+                 title="Path to the Vosk speech recognition model directory" />
+          <p class="setting-hint">
+            Download from <a href="https://alphacephei.com/vosk/models" target="_blank">alphacephei.com/vosk/models</a>
+            and extract to the models/ folder.
+          </p>
+        </div>
+
+        <div class="setting-row">
+          <label for="scroll-speed-mult">Scroll Speed Multiplier</label>
+          <input type="range" id="scroll-speed-mult" min="0.5" max="3.0" step="0.1" value="1.0" />
+          <span id="scroll-speed-mult-value">1.0×</span>
+        </div>
+
+        <div class="setting-row">
+          <label>
+            <input type="checkbox" id="virtual-camera-toggle" />
+            Enable OBS Virtual Camera (Windows only)
+          </label>
+          <p class="setting-hint">
+            Output the phone camera feed to OBS Virtual Camera for use in
+            Zoom, Teams, Meet, etc.
+          </p>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="settings-save" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="script-editor.js"></script>
+  <script src="voice-sync.js"></script>
+</body>
+</html>
